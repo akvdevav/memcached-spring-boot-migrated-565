@@ -1,0 +1,17 @@
+apply plugin: 'org.sonarqube'
+apply plugin: 'jacoco'
+
+rootProject.sonar {
+    properties {
+        property "sonar.organization", "sixhours"
+    }
+}
+
+jacocoTestReport {
+    reports {
+        xml.required = true
+        html.required = true
+    }
+}
+
+build.dependsOn jacocoTestReport

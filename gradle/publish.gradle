@@ -1,0 +1,50 @@
+apply plugin: 'maven-publish'
+apply plugin: 'signing'
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            from components.java
+            versionMapping {
+                usage('java-api') {
+                    fromResolutionOf('runtimeClasspath')
+                }
+                usage('java-runtime') {
+                    fromResolutionResult()
+                }
+            }
+            pom {
+                afterEvaluate {
+                    name = "${project.projectName}"
+                    description = "${project.projectDesc}"
+                }
+                url = "https://github.com/sixhours-team/memcached-spring-boot"
+                licenses {
+                    license {
+                        name = 'The Apache Software License, Version 2.0'
+                        url = 'http://www.apache.org/licenses/LICENSE-2.0.txt'
+                    }
+                }
+                developers {
+                    developer {
+                        name = 'Igor Bolic'
+                        email = 'igor.bolic@sixhours.io'
+                    }
+                    developer {
+                        name = 'Sasa Bolic'
+                        email = 'sasa.bolic@sixhours.io'
+                    }
+                }
+                scm {
+                    url = 'https://github.com/sixhours-team/memcached-spring-boot.git'
+                }
+            }
+        }
+    }
+    signing {
+        def signingKey = new String(System.getenv().getOrDefault('GPG_SIGNING_KEY', "").decodeBase64())
+        def signingPassword = System.getenv('GPG_SIGNING_PASSWORD')
+        useInMemoryPgpKeys(signingKey, signingPassword)
+        sign publishing.publications.mavenJava
+    }
+}
