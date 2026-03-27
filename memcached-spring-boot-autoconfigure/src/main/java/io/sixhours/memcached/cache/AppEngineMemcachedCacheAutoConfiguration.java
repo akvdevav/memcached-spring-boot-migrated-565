@@ -27,20 +27,22 @@ import org.springframework.cloud.context.config.annotation.RefreshScope;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Conditional;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.data.redis.cache.RedisCacheConfiguration;
+import org.springframework.data.redis.cache.RedisCacheManager;
+import org.springframework.data.redis.connection.RedisConnectionFactory;
 
 import java.io.IOException;
 
 /**
- * {@link EnableAutoConfiguration Auto-configuration} for the Memcached cache.
+ * Auto-configuration for Redis (Valkey) cache.
  * Creates {@link CacheManager} when caching is enabled via {@link EnableCaching}.
  *
  * @author Igor Bolic
  * @author Sasa Bolic
  */
 @Configuration(proxyBeanMethods = false)
-@ConditionalOnClass({com.google.appengine.api.memcache.BaseMemcacheService.class, CacheManager.class})
-@Conditional(AppEngineProviderCondition.class)
-@EnableConfigurationProperties(MemcachedCacheProperties.class)
+@ConditionalOnClass({RedisConnectionFactory.class, CacheManager.class})
+@EnableConfigurationProperties(RedisCacheProperties.class)
 @AutoConfigureAfter(name = "org.springframework.cloud.autoconfigure.RefreshAutoConfiguration")
 public class AppEngineMemcachedCacheAutoConfiguration {
 
@@ -50,9 +52,11 @@ public class AppEngineMemcachedCacheAutoConfiguration {
 
         @Bean
         @RefreshScope
-        @ConditionalOnMissingBean(value = MemcachedCacheManager.class, search = SearchStrategy.CURRENT)
-        public MemcachedCacheManager cacheManager(MemcachedCacheProperties properties) throws IOException {
-            return new AppEngineMemcachedCacheManagerFactory(properties).create();
+        @ConditionalOnMissingBean(value = RedisCacheManager.class, search = SearchStrategy.CURRENT)
+        public RedisCacheManager cacheManager(RedisConnectionFactory redisConnectionFactory) throws IOException {
+            return RedisCacheManager.builder(redisConnectionFactory)
+                    .cacheDefaults(RedisCacheConfiguration.defaultCacheConfig())
+                    .build();
         }
     }
 
@@ -61,9 +65,11 @@ public class AppEngineMemcachedCacheAutoConfiguration {
     static class MemcachedCacheConfiguration {
 
         @Bean
-        @ConditionalOnMissingBean(value = MemcachedCacheManager.class, search = SearchStrategy.CURRENT)
-        public MemcachedCacheManager cacheManager(MemcachedCacheProperties properties) throws IOException {
-            return new AppEngineMemcachedCacheManagerFactory(properties).create();
+        @ConditionalOnMissingBean(value = RedisCacheManager.class, search = SearchStrategy.CURRENT)
+        public RedisCacheManager cacheManager(RedisConnectionFactory redisConnectionFactory) throws IOException {
+            return RedisCacheManager.builder(redisConnectionFactory)
+                    .cacheDefaults(RedisCacheConfiguration.defaultCacheConfig())
+                    .build();
         }
     }
 }

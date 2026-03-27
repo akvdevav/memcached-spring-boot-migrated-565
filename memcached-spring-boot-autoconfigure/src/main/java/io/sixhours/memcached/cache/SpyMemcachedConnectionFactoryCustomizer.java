@@ -15,8 +15,11 @@
  */
 package io.sixhours.memcached.cache;
 
-import net.spy.memcached.ConnectionFactoryBuilder;
+import org.springframework.data.redis.connection.RedisConnectionFactory;
 
+/**
+ * Customizer for Redis connection factories, replacing the legacy SpyMemcached customizer.
+ */
 public interface SpyMemcachedConnectionFactoryCustomizer {
-    void customize(ConnectionFactoryBuilder builder);
+    void customize(RedisConnectionFactory factory);
 }

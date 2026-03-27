@@ -16,17 +16,19 @@
 package io.sixhours.memcached.cache;
 
 import org.springframework.cache.support.AbstractValueAdaptingCache;
+import org.springframework.data.redis.core.RedisTemplate;
 
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.concurrent.Callable;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
- * Cache implementation on top of Memcached.
+ * Cache implementation on top of Valkey (Redis-compatible).
  *
  * @author Igor Bolic
  */
@@ -34,7 +36,7 @@ public class MemcachedCache extends AbstractValueAdaptingCache {
 
     private static final String KEY_DELIMITER = ":";
 
-    private final IMemcachedClient memcachedClient;
+    private final RedisTemplate<String, Object> redisTemplate;
     private final MemcacheCacheMetadata memcacheCacheMetadata;
 
     private final Lock lock = new ReentrantLock();
@@ -47,16 +49,16 @@ public class MemcachedCache extends AbstractValueAdaptingCache {
     /**
      * Create an {@code MemcachedCache} with the given settings.
      *
-     * @param name            Cache name
-     * @param memcachedClient {@link IMemcachedClient}
-     * @param expiration      Cache expiration in seconds
-     * @param prefix          Cache key prefix
-     * @param namespace       Cache invalidation namespace key
-     * @param clock           Cache expiration clock
+     * @param name          Cache name
+     * @param redisTemplate {@link RedisTemplate}
+     * @param expiration    Cache expiration in seconds
+     * @param prefix        Cache key prefix
+     * @param namespace     Cache invalidation namespace key
+     * @param clock         Cache expiration clock
      */
-    public MemcachedCache(String name, IMemcachedClient memcachedClient, int expiration, String prefix, String namespace, Clock clock) {
+    public MemcachedCache(String name, RedisTemplate<String, Object> redisTemplate, int expiration, String prefix, String namespace, Clock clock) {
         super(true);
-        this.memcachedClient = memcachedClient;
+        this.redisTemplate = redisTemplate;
         this.memcacheCacheMetadata = new MemcacheCacheMetadata(name, expiration, prefix, namespace, clock);
     }
 
@@ -65,19 +67,19 @@ public class MemcachedCache extends AbstractValueAdaptingCache {
      * <p>
      * Uses the UTC timezone system clock as default expiration time clock.
      *
-     * @param name            Cache name
-     * @param memcachedClient {@link IMemcachedClient}
-     * @param expiration      Cache expiration in seconds
-     * @param prefix          Cache key prefix
-     * @param namespace       Cache invalidation namespace key
+     * @param name          Cache name
+     * @param redisTemplate {@link RedisTemplate}
+     * @param expiration    Cache expiration in seconds
+     * @param prefix        Cache key prefix
+     * @param namespace     Cache invalidation namespace key
      */
-    public MemcachedCache(String name, IMemcachedClient memcachedClient, int expiration, String prefix, String namespace) {
-        this(name, memcachedClient, expiration, prefix, namespace, Clock.systemUTC());
+    public MemcachedCache(String name, RedisTemplate<String, Object> redisTemplate, int expiration, String prefix, String namespace) {
+        this(name, redisTemplate, expiration, prefix, namespace, Clock.systemUTC());
     }
 
     @Override
     protected Object lookup(Object key) {
-        return trackHitsMisses(memcachedClient.get(memcachedKey(key)));
+        return trackHitsMisses(redisTemplate.opsForValue().get(redisKey(key)));
     }
 
     @Override
@@ -87,7 +89,7 @@ public class MemcachedCache extends AbstractValueAdaptingCache {
 
     @Override
     public Object getNativeCache() {
-        return this.memcachedClient;
+        return this.redisTemplate;
     }
 
     @SuppressWarnings("unchecked")
@@ -124,8 +126,9 @@ public class MemcachedCache extends AbstractValueAdaptingCache {
 
     @Override
     public void put(Object key, Object value) {
-        this.memcachedClient.set(memcachedKey(key), this.memcacheCacheMetadata.expiration(), toStoreValue(value));
-        this.memcachedClient.touch(this.memcacheCacheMetadata.namespaceKey(), this.memcacheCacheMetadata.expiration());
+        redisTemplate.opsForValue().set(redisKey(key), toStoreValue(value), memcacheCacheMetadata.expiration(), TimeUnit.SECONDS);
+        // Refresh namespace key expiration
+        redisTemplate.expire(memcacheCacheMetadata.namespaceKey(), memcacheCacheMetadata.expiration(), TimeUnit.SECONDS);
         puts.incrementAndGet();
     }
 
@@ -142,13 +145,13 @@ public class MemcachedCache extends AbstractValueAdaptingCache {
 
     @Override
     public void evict(Object key) {
-        this.memcachedClient.delete(memcachedKey(key));
+        redisTemplate.delete(redisKey(key));
         this.evictions.incrementAndGet();
     }
 
     @Override
     public void clear() {
-        this.memcachedClient.incr(this.memcacheCacheMetadata.namespaceKey(), 1);
+        redisTemplate.opsForValue().increment(memcacheCacheMetadata.namespaceKey(), 1);
     }
 
     public long hits() {
@@ -183,15 +186,12 @@ public class MemcachedCache extends AbstractValueAdaptingCache {
     }
 
     /**
-     * Gets Memcached key value.
-     * <p>
-     * Prepends cache prefix and namespace value to the given {@code key}. All whitespace characters will be stripped from
-     * the {@code key} value, for Memcached key to be valid.
+     * Generates the Redis key for a given cache entry.
      *
      * @param key The key
-     * @return Memcached key
+     * @return Redis key
      */
-    private String memcachedKey(Object key) {
+    private String redisKey(Object key) {
         return memcacheCacheMetadata.keyPrefix() +
                 namespaceValue() +
                 KEY_DELIMITER +
@@ -199,20 +199,19 @@ public class MemcachedCache extends AbstractValueAdaptingCache {
     }
 
     /**
-     * Gets namespace value from the cache. The value is used for invalidation of the cache data
-     * by incrementing current namespace value by 1.
+     * Retrieves the current namespace value, creating it if absent.
      *
      * @return Namespace integer value returned as {@code String}
      */
     private String namespaceValue() {
-        String value = (String) this.memcachedClient.get(this.memcacheCacheMetadata.namespaceKey());
-        if (value == null) {
-            value = String.valueOf(System.currentTimeMillis());
-            this.memcachedClient.set(this.memcacheCacheMetadata.namespaceKey(),
-                    this.memcacheCacheMetadata.expiration(), value);
+        String nsKey = memcacheCacheMetadata.namespaceKey();
+        Object raw = redisTemplate.opsForValue().get(nsKey);
+        if (raw == null) {
+            String value = String.valueOf(System.currentTimeMillis());
+            redisTemplate.opsForValue().set(nsKey, value, memcacheCacheMetadata.expiration(), TimeUnit.SECONDS);
+            return value;
         }
-
-        return value;
+        return raw.toString();
     }
 
     static class MemcacheCacheMetadata {

@@ -19,8 +19,13 @@ import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.support.NoOpCache;
 import org.springframework.cache.transaction.AbstractTransactionSupportingCacheManager;
+import org.springframework.data.redis.cache.RedisCache;
+import org.springframework.data.redis.cache.RedisCacheConfiguration;
+import org.springframework.data.redis.cache.RedisCacheWriter;
+import org.springframework.data.redis.core.RedisTemplate;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -33,15 +38,15 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Logger;
 
 /**
- * {@link CacheManager} implementation for Memcached.
- * <p>
- * By default appends prefix {@code memcached:spring-boot} and uses namespace key value of {@code namespace-key}
+ * {@link CacheManager} implementation for Valkey (Redis compatible).
+ *
+ * By default appends prefix {@code valkey:spring-boot} and uses namespace key value of {@code namespace-key}
  * to avoid clashes with other data that might be kept in the cache. Custom prefix can be specified
  * in Spring configuration file e.g.
  * <br><br>
  * <code>
- * memcached.cache.prefix=custom-prefix<br>
- * memcached.cache.namespace=custom-namespace-key
+ * valkey.cache.prefix=custom-prefix<br>
+ * valkey.cache.namespace=custom-namespace-key
  * </code>
  *
  * @author Igor Bolic
@@ -51,7 +56,7 @@ public class MemcachedCacheManager extends AbstractTransactionSupportingCacheMan
 
     private static final Logger log = Logger.getLogger(MemcachedCacheManager.class.getName());
 
-    final IMemcachedClient memcachedClient;
+    private final RedisTemplate<String, Object> redisTemplate;
 
     private int expiration = Default.EXPIRATION;
     private String prefix = Default.PREFIX;
@@ -64,15 +69,15 @@ public class MemcachedCacheManager extends AbstractTransactionSupportingCacheMan
     /**
      * Construct a {@link MemcachedCacheManager}
      *
-     * @param memcachedClient {@link IMemcachedClient}
+     * @param redisTemplate {@link RedisTemplate}
      */
-    public MemcachedCacheManager(IMemcachedClient memcachedClient) {
-        this.memcachedClient = memcachedClient;
+    public MemcachedCacheManager(RedisTemplate<String, Object> redisTemplate) {
+        this.redisTemplate = redisTemplate;
     }
 
     @Override
     protected Collection<? extends Cache> loadCaches() {
-        List<MemcachedCache> caches = new ArrayList<>();
+        List<RedisCache> caches = new ArrayList<>();
 
         for (String metricsCacheName : metricsCacheNames) {
             caches.add(createCache(metricsCacheName));
@@ -92,13 +97,22 @@ public class MemcachedCacheManager extends AbstractTransactionSupportingCacheMan
     }
 
     @Override
-    protected MemcachedCache getMissingCache(String name) {
+    protected RedisCache getMissingCache(String name) {
         return createCache(name);
     }
 
-    private MemcachedCache createCache(String name) {
+    private RedisCache createCache(String name) {
         int cacheExpiration = determineExpiration(name);
-        return new MemcachedCache(name, memcachedClient, cacheExpiration, prefix, namespace, clock);
+        Duration ttl = Duration.ofSeconds(cacheExpiration);
+        String keyPrefix = prefix + ":" + namespace + ":";
+
+        RedisCacheConfiguration config = RedisCacheConfiguration.defaultCacheConfig()
+                .entryTtl(ttl)
+                .prefixKeysWith(keyPrefix);
+
+        RedisCacheWriter writer = RedisCacheWriter.nonLockingRedisCacheWriter(redisTemplate.getConnectionFactory());
+
+        return new RedisCache(name, writer, config);
     }
 
     private int determineExpiration(String name) {
@@ -144,8 +158,8 @@ public class MemcachedCacheManager extends AbstractTransactionSupportingCacheMan
         }
     }
 
-    public IMemcachedClient client() {
-        return this.memcachedClient;
+    public RedisTemplate<String, Object> client() {
+        return this.redisTemplate;
     }
 
     public void setDisabledCacheNames(Set<String> disabledCacheNames) {

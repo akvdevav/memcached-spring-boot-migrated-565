@@ -9,7 +9,8 @@
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * WITHOUT WARRANTIES OR 
+ * KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
@@ -20,7 +21,7 @@ import org.springframework.boot.autoconfigure.condition.NoneNestedConditions;
 import org.springframework.context.annotation.Condition;
 
 /**
- * {@link Condition} that checks that {@code memcached.cache.provider} property is not {@code appegnine}.
+ * {@link Condition} that checks that {@code memcached.cache.provider} property is not {@code appengine}.
  *
  * @author Igor Bolic
  */

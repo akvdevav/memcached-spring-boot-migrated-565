@@ -2,12 +2,15 @@ ext.projectName = 'Memcached Spring Boot AutoConfiguration'
 ext.projectDesc = 'Memcached Spring Boot AutoConfiguration'
 
 dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.postgresql:postgresql'
     implementation 'org.springframework.boot:spring-boot-autoconfigure'
     implementation 'org.springframework:spring-context-support'
 
     annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
 
-    optionalImplementation "com.googlecode.xmemcached:xmemcached:${xmemcachedVersion}"
+// Removed legacy dependency: memcached
     optionalImplementation "com.amazonaws:elasticache-java-cluster-client:${elasticacheClientVersion}"
     optionalImplementation "com.google.appengine:appengine-api-1.0-sdk:${appengineApiVersion}"
 

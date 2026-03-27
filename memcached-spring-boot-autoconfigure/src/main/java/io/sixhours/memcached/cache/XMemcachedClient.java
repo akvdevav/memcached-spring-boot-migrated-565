@@ -9,48 +9,49 @@
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * WITHOUT WARRANTIES OR ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
 package io.sixhours.memcached.cache;
 
-import net.rubyeye.xmemcached.MemcachedClient;
-import net.rubyeye.xmemcached.exception.MemcachedException;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.springframework.dao.DataAccessException;
+import org.springframework.data.redis.connection.RedisConnection;
+import org.springframework.data.redis.connection.RedisConnectionFactory;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.ValueOperations;
 
-import java.io.IOException;
-import java.util.concurrent.TimeoutException;
+import java.time.Duration;
 
 /**
- * {@code XMemcached} memcached client implementation.
+ * {@code Redis} cache client implementation replacing XMemcached.
  *
  * @author Igor Bolic
  */
 public class XMemcachedClient implements IMemcachedClient {
     private static final Log log = LogFactory.getLog(XMemcachedClient.class);
 
-    private final MemcachedClient memcachedClient;
+    private final RedisTemplate<String, Object> redisTemplate;
+    private final ValueOperations<String, Object> valueOps;
 
-    public XMemcachedClient(MemcachedClient memcachedClient) {
-        log.info("XMemcachedClient client initialized.");
-        this.memcachedClient = memcachedClient;
+    public XMemcachedClient(RedisTemplate<String, Object> redisTemplate) {
+        log.info("XMemcachedClient (Redis) client initialized.");
+        this.redisTemplate = redisTemplate;
+        this.valueOps = redisTemplate.opsForValue();
     }
 
     @Override
-    public MemcachedClient nativeClient() {
-        return this.memcachedClient;
+    public RedisTemplate<String, Object> nativeClient() {
+        return this.redisTemplate;
     }
 
     @Override
     public Object get(String key) {
         try {
-            return this.memcachedClient.get(key);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new MemcachedOperationException("Failed to get key", e);
-        } catch (TimeoutException | MemcachedException e) {
+            return this.valueOps.get(key);
+        } catch (DataAccessException e) {
             throw new MemcachedOperationException("Failed to get key", e);
         }
     }
@@ -58,11 +59,12 @@ public class XMemcachedClient implements IMemcachedClient {
     @Override
     public void set(String key, int exp, Object value) {
         try {
-            this.memcachedClient.set(key, exp, value);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new MemcachedOperationException("Failed to set key", e);
-        } catch (TimeoutException | MemcachedException e) {
+            if (exp > 0) {
+                this.valueOps.set(key, value, Duration.ofSeconds(exp));
+            } else {
+                this.valueOps.set(key, value);
+            }
+        } catch (DataAccessException e) {
             throw new MemcachedOperationException("Failed to set key", e);
         }
     }
@@ -70,11 +72,8 @@ public class XMemcachedClient implements IMemcachedClient {
     @Override
     public void touch(String key, int exp) {
         try {
-            this.memcachedClient.touch(key, exp);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new MemcachedOperationException("Failed to touch key", e);
-        } catch (TimeoutException | MemcachedException e) {
+            this.redisTemplate.expire(key, Duration.ofSeconds(exp));
+        } catch (DataAccessException e) {
             throw new MemcachedOperationException("Failed to touch key", e);
         }
     }
@@ -82,11 +81,8 @@ public class XMemcachedClient implements IMemcachedClient {
     @Override
     public void delete(String key) {
         try {
-            this.memcachedClient.delete(key);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new MemcachedOperationException("Failed to delete key", e);
-        } catch (TimeoutException | MemcachedException e) {
+            this.redisTemplate.delete(key);
+        } catch (DataAccessException e) {
             throw new MemcachedOperationException("Failed to delete key", e);
         }
     }
@@ -94,11 +90,13 @@ public class XMemcachedClient implements IMemcachedClient {
     @Override
     public void flush() {
         try {
-            this.memcachedClient.flushAll();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new MemcachedOperationException("Failed to flush all keys", e);
-        } catch (TimeoutException | MemcachedException e) {
+            RedisConnectionFactory factory = this.redisTemplate.getConnectionFactory();
+            if (factory != null) {
+                RedisConnection connection = factory.getConnection();
+                connection.flushAll();
+                connection.close();
+            }
+        } catch (DataAccessException e) {
             throw new MemcachedOperationException("Failed to flush all keys", e);
         }
     }
@@ -106,11 +104,9 @@ public class XMemcachedClient implements IMemcachedClient {
     @Override
     public long incr(String key, int by) {
         try {
-            return this.memcachedClient.incr(key, by);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new MemcachedOperationException("Failed to increment key", e);
-        } catch (TimeoutException | MemcachedException e) {
+            Long result = this.valueOps.increment(key, by);
+            return result != null ? result : 0L;
+        } catch (DataAccessException e) {
             throw new MemcachedOperationException("Failed to increment key", e);
         }
     }
@@ -118,8 +114,12 @@ public class XMemcachedClient implements IMemcachedClient {
     @Override
     public void shutdown() {
         try {
-            this.memcachedClient.shutdown();
-        } catch (IOException e) {
+            RedisConnectionFactory factory = this.redisTemplate.getConnectionFactory();
+            if (factory != null) {
+                RedisConnection connection = factory.getConnection();
+                connection.close();
+            }
+        } catch (Exception e) {
             throw new MemcachedOperationException("Failed to shutdown client", e);
         }
     }

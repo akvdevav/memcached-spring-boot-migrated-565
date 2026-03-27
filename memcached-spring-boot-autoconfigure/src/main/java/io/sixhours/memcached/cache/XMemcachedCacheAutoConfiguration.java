@@ -26,43 +26,59 @@ import org.springframework.cloud.context.config.annotation.RefreshScope;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Conditional;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.data.redis.connection.RedisConnectionFactory;
+import org.springframework.data.redis.cache.RedisCacheManager;
+import org.springframework.data.redis.cache.RedisCacheConfiguration;
+import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSerializer;
+import org.springframework.data.redis.serializer.RedisSerializationContext;
+import org.springframework.data.redis.serializer.StringRedisSerializer;
 
 import java.io.IOException;
 
 /**
- * {@link EnableAutoConfiguration Auto-configuration} for the Memcached cache
- * backed by XMemcached client.
+ * {@link EnableAutoConfiguration Auto-configuration} for the Redis cache
+ * backed by Lettuce client.
  * Creates {@link CacheManager} when caching is enabled via {@link EnableCaching}.
  *
  * @author Igor Bolic
  * @author Sasa Bolic
  */
 @Configuration(proxyBeanMethods = false)
-@ConditionalOnClass({net.rubyeye.xmemcached.MemcachedClient.class, CacheManager.class})
+@ConditionalOnClass({RedisConnectionFactory.class, CacheManager.class})
 @Conditional(NotAppEngineProviderCondition.class)
-@EnableConfigurationProperties(MemcachedCacheProperties.class)
+@EnableConfigurationProperties(MemcachedCacheProperties.class) // retained for external config compatibility
 public class XMemcachedCacheAutoConfiguration {
 
     @Configuration
     @ConditionalOnRefreshScope
-    static class RefreshableMemcachedCacheConfiguration {
+    static class RefreshableRedisCacheConfiguration {
 
         @Bean
         @RefreshScope
-        @ConditionalOnMissingBean(value = MemcachedCacheManager.class, search = SearchStrategy.CURRENT)
-        public MemcachedCacheManager cacheManager(MemcachedCacheProperties properties) throws IOException {
-            return new XMemcachedCacheManagerFactory(properties).create();
+        @ConditionalOnMissingBean(value = CacheManager.class, search = SearchStrategy.CURRENT)
+        public CacheManager cacheManager(RedisConnectionFactory redisConnectionFactory) throws IOException {
+            RedisCacheConfiguration config = RedisCacheConfiguration.defaultCacheConfig()
+                    .serializeKeysWith(RedisSerializationContext.SerializationPair.fromSerializer(new StringRedisSerializer()))
+                    .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(new GenericJackson2JsonRedisSerializer()));
+            return RedisCacheManager.builder(redisConnectionFactory)
+                    .cacheDefaults(config)
+                    .build();
         }
     }
 
     @Configuration
     @ConditionalOnMissingRefreshScope
-    static class MemcachedCacheConfiguration {
+    static class RedisCacheConfiguration {
 
         @Bean
-        @ConditionalOnMissingBean(value = MemcachedCacheManager.class, search = SearchStrategy.CURRENT)
-        public MemcachedCacheManager cacheManager(MemcachedCacheProperties properties) throws IOException {
-            return new XMemcachedCacheManagerFactory(properties).create();
+        @ConditionalOnMissingBean(value = CacheManager.class, search = SearchStrategy.CURRENT)
+        public CacheManager cacheManager(RedisConnectionFactory redisConnectionFactory) throws IOException {
+            RedisCacheConfiguration config = RedisCacheConfiguration.defaultCacheConfig()
+                    .serializeKeysWith(RedisSerializationContext.SerializationPair.fromSerializer(new StringRedisSerializer()))
+                    .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(new GenericJackson2JsonRedisSerializer()));
+            return RedisCacheManager.builder(redisConnectionFactory)
+                    .cacheDefaults(config)
+                    .build();
         }
     }
 }

@@ -13,27 +13,29 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.sixhours.memcached.cache;
+package io.sixhours.redis.cache;
 
 import io.micrometer.core.instrument.binder.MeterBinder;
 import org.springframework.boot.actuate.metrics.cache.CacheMeterBinderProvider;
+import org.springframework.boot.actuate.metrics.cache.RedisCacheMeterBinderProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.data.redis.cache.RedisCacheManager;
 
 /**
- * Configuration for the Memcached {@link CacheMeterBinderProvider} bean.
+ * Configuration for the Redis {@link CacheMeterBinderProvider} bean.
  *
  * @author Igor Bolic
  */
 @Configuration(proxyBeanMethods = false)
-@ConditionalOnBean(MemcachedCacheManager.class)
+@ConditionalOnBean(RedisCacheManager.class)
 @ConditionalOnClass(MeterBinder.class)
-public class MemcachedCacheMeterBinderProviderConfiguration {
+public class RedisCacheMeterBinderProviderConfiguration {
 
     @Bean
-    public MemcachedCacheMeterBinderProvider memcachedCacheMeterBinderProvider() {
-        return new MemcachedCacheMeterBinderProvider();
+    public RedisCacheMeterBinderProvider redisCacheMeterBinderProvider() {
+        return new RedisCacheMeterBinderProvider();
     }
 }

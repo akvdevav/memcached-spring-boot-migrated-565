@@ -1,35 +1,28 @@
-/*
- * Copyright 2016-2026 Sixhours
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package io.sixhours.memcached.cache;
 
 import org.springframework.beans.factory.DisposableBean;
+import org.springframework.data.redis.cache.RedisCacheConfiguration;
+import org.springframework.data.redis.cache.RedisCacheManager;
+import org.springframework.data.redis.cache.RedisCacheWriter;
+import org.springframework.data.redis.connection.RedisConnectionFactory;
 
 /**
- * Disposable {@link MemcachedCacheManager} bean.
- *
- * @author Igor Bolic
+ * Disposable {@link RedisCacheManager} bean adapted from the original Memcached implementation.
  */
-class DisposableMemcachedCacheManager extends MemcachedCacheManager implements DisposableBean {
+class DisposableMemcachedCacheManager extends RedisCacheManager implements DisposableBean {
 
-    public DisposableMemcachedCacheManager(IMemcachedClient memcachedClient) {
-        super(memcachedClient);
+    private final RedisConnectionFactory redisConnectionFactory;
+
+    public DisposableMemcachedCacheManager(RedisConnectionFactory redisConnectionFactory) {
+        super(RedisCacheWriter.nonLockingRedisCacheWriter(redisConnectionFactory),
+              RedisCacheConfiguration.defaultCacheConfig());
+        this.redisConnectionFactory = redisConnectionFactory;
     }
 
     @Override
-    public void destroy() {
-        this.memcachedClient.shutdown();
+    public void destroy() throws Exception {
+        if (redisConnectionFactory instanceof DisposableBean) {
+            ((DisposableBean) redisConnectionFactory).destroy();
+        }
     }
 }

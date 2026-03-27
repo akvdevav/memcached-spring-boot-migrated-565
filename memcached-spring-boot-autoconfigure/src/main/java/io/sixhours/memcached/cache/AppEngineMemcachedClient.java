@@ -9,70 +9,75 @@
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * WITHOUT WARRANTIES OR ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
 package io.sixhours.memcached.cache;
 
-import com.google.appengine.api.memcache.Expiration;
-import com.google.appengine.api.memcache.MemcacheService;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.ValueOperations;
+import java.time.Duration;
 
 /**
- * {@code AppEngine} memcached client implementation.
+ * {@code AppEngine} memcached client implementation replaced with Valkey (Redis) support.
  *
  * @author Igor Bolic
  */
 public class AppEngineMemcachedClient implements IMemcachedClient {
     private static final Log log = LogFactory.getLog(AppEngineMemcachedClient.class);
 
-    private final MemcacheService service;
+    private final RedisTemplate<String, Object> redisTemplate;
+    private final ValueOperations<String, Object> valueOps;
 
-    public AppEngineMemcachedClient(MemcacheService service) {
-        log.info("AppEngineMemcachedClient client initialized.");
-        this.service = service;
+    public AppEngineMemcachedClient(RedisTemplate<String, Object> redisTemplate) {
+        log.info("AppEngineMemcachedClient client initialized with RedisTemplate.");
+        this.redisTemplate = redisTemplate;
+        this.valueOps = redisTemplate.opsForValue();
     }
 
     @Override
-    public MemcacheService nativeClient() {
-        return this.service;
+    public RedisTemplate<String, Object> nativeClient() {
+        return this.redisTemplate;
     }
 
     @Override
     public Object get(String key) {
-        return this.service.get(key);
+        return this.valueOps.get(key);
     }
 
     @Override
     public void set(String key, int exp, Object value) {
-        this.service.put(key, value, Expiration.byDeltaSeconds(exp));
+        this.valueOps.set(key, value, Duration.ofSeconds(exp));
     }
 
     @Override
     public void touch(String key, int exp) {
-        final MemcacheService.IdentifiableValue identifiable = this.service.getIdentifiable(key);
-        this.service.putIfUntouched(key, identifiable, identifiable.getValue(), Expiration.byDeltaSeconds(exp));
+        this.redisTemplate.expire(key, Duration.ofSeconds(exp));
     }
 
     @Override
     public void delete(String key) {
-        this.service.delete(key);
+        this.redisTemplate.delete(key);
     }
 
     @Override
     public void flush() {
-        this.service.clearAll();
+        if (this.redisTemplate.getConnectionFactory() != null) {
+            this.redisTemplate.getConnectionFactory().getConnection().flushDb();
+        }
     }
 
     @Override
     public long incr(String key, int by) {
-        return this.service.increment(key, by);
+        Long result = this.valueOps.increment(key, by);
+        return result != null ? result : 0L;
     }
 
     @Override
     public void shutdown() {
-        // do nothing
+        // No explicit shutdown needed for RedisTemplate; resources are managed by Spring.
     }
 }

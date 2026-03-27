@@ -15,62 +15,85 @@
  */
 package io.sixhours.memcached.cache;
 
-import net.spy.memcached.MemcachedClient;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.springframework.data.redis.connection.RedisConnectionFactory;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.ValueOperations;
+
+import java.time.Duration;
 
 /**
- * {@code SpyMemcached} memcached client implementation.
+ * {@code SpyMemcachedClient} replaced with Redis implementation.
  *
  * @author Sasa Bolic
  */
 public class SpyMemcachedClient implements IMemcachedClient {
     private static final Log log = LogFactory.getLog(SpyMemcachedClient.class);
 
-    private final MemcachedClient memcachedClient;
+    private final RedisTemplate<String, Object> redisTemplate;
+    private final ValueOperations<String, Object> valueOps;
 
-    public SpyMemcachedClient(MemcachedClient memcachedClient) {
-        log.info("SpyMemcached client initialized.");
-        this.memcachedClient = memcachedClient;
+    public SpyMemcachedClient(RedisTemplate<String, Object> redisTemplate) {
+        log.info("Redis client initialized.");
+        this.redisTemplate = redisTemplate;
+        this.valueOps = redisTemplate.opsForValue();
     }
 
     @Override
-    public MemcachedClient nativeClient() {
-        return this.memcachedClient;
+    public RedisTemplate<String, Object> nativeClient() {
+        return this.redisTemplate;
     }
 
     @Override
     public Object get(String key) {
-        return this.memcachedClient.get(key);
+        return this.valueOps.get(key);
     }
 
     @Override
     public void set(String key, int exp, Object value) {
-        this.memcachedClient.set(key, exp, value);
+        if (exp > 0) {
+            this.valueOps.set(key, value, Duration.ofSeconds(exp));
+        } else {
+            this.valueOps.set(key, value);
+        }
     }
 
     @Override
     public void touch(String key, int exp) {
-        this.memcachedClient.touch(key, exp);
+        if (exp > 0) {
+            this.redisTemplate.expire(key, Duration.ofSeconds(exp));
+        }
     }
 
     @Override
     public void delete(String key) {
-        this.memcachedClient.delete(key);
+        this.redisTemplate.delete(key);
     }
 
     @Override
     public void flush() {
-        this.memcachedClient.flush();
+        RedisConnectionFactory factory = this.redisTemplate.getConnectionFactory();
+        if (factory != null) {
+            factory.getConnection().flushAll();
+        }
     }
 
     @Override
     public long incr(String key, int by) {
-        return this.memcachedClient.incr(key, by);
+        Long result = this.valueOps.increment(key, by);
+        return result != null ? result : 0L;
     }
 
     @Override
     public void shutdown() {
-        this.memcachedClient.shutdown();
+        RedisConnectionFactory factory = this.redisTemplate.getConnectionFactory();
+        if (factory != null) {
+            try {
+                factory.getConnection().close();
+            } catch (Exception e) {
+                log.warn("Error while shutting down Redis connection", e);
+            }
+        }
     }
 }

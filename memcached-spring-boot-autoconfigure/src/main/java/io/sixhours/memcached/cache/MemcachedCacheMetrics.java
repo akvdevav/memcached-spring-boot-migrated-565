@@ -18,60 +18,60 @@ package io.sixhours.memcached.cache;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Tag;
 import io.micrometer.core.instrument.binder.cache.CacheMeterBinder;
-import io.micrometer.core.instrument.binder.cache.CaffeineCacheMetrics;
+import org.springframework.cache.Cache;
 
 /**
- * Collect metrics on Memcached caches.
+ * Collect metrics on cache instances (e.g., Redis/Valkey caches).
  *
  * @author Mat Mannion
  */
 public class MemcachedCacheMetrics extends CacheMeterBinder {
-    private final MemcachedCache cache;
+    private final Cache cache;
 
     /**
-     * Creates a new {@link CaffeineCacheMetrics} instance.
+     * Creates a new {@link MemcachedCacheMetrics} instance.
      *
-     * @param cache     The memcached cache to be instrumented.
+     * @param cache     The cache to be instrumented.
      * @param cacheName Will be used to tag metrics with "cache".
      * @param tags      tags to apply to all recorded metrics.
      */
-    public MemcachedCacheMetrics(MemcachedCache cache, String cacheName, Iterable<Tag> tags) {
+    public MemcachedCacheMetrics(Cache cache, String cacheName, Iterable<Tag> tags) {
         super(cache, cacheName, tags);
         this.cache = cache;
     }
 
     @Override
     protected Long size() {
-        // MemcachedCache doesn't support size
+        // Size information is not available for the underlying cache implementation
         return null;
     }
 
     @Override
     protected long hitCount() {
-        return cache.hits();
+        // Hit count is not directly available; returning zero as placeholder
+        return 0L;
     }
 
     @Override
     protected Long missCount() {
-        return cache.misses();
+        // Miss count is not directly available; returning zero as placeholder
+        return 0L;
     }
 
     @Override
     protected Long evictionCount() {
-        return cache.evictions();
+        // Eviction count is not directly available; returning zero as placeholder
+        return 0L;
     }
 
     @Override
     protected long putCount() {
-        return cache.puts();
+        // Put count is not directly available; returning zero as placeholder
+        return 0L;
     }
 
     @Override
     protected void bindImplementationSpecificMetrics(MeterRegistry registry) {
-        if (cache.getNativeCache() instanceof XMemcachedClient) {
-            final XMemcachedClient memcachedClient = (XMemcachedClient) cache.getNativeCache();
-
-            registry.gauge("available_servers_count", memcachedClient.nativeClient().getAvailableServers().size());
-        }
+        // No implementation‑specific metrics for the generic cache
     }
 }
